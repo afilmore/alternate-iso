@@ -1,0 +1,225 @@
+#!/bin/sh
+################################################################################
+#
+# isoimage
+# 
+# Copyright 2012 Axel FILMORE <axel.filmore@gmail.com>
+# 
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License Version 2.
+# http://www.gnu.org/licenses/gpl-2.0.txt
+# 
+# Purpose:  generate a mini.iso image from an existing one.
+#           
+# Example : you have a renamed mini.iso image as
+#           precise/netinstall/precise-i386-20120215.iso
+#           then run :
+#           sudo ./isoimage -d precise -r 20120215
+#           the generated image will be :
+#           precise/realise/precise-i386-20120215.iso
+# 
+################################################################################
+#===============================================================================
+# Global parameters
+#===============================================================================
+CURRENT_DIR=`pwd`
+TOOL_IGNORE_ERROR="0"
+TOOL_SHOW_OUTPUT="1"
+
+# default options
+OPT_DISTNAME="precise"
+OPT_ARCH="i386"
+OPT_RELEASE="20120215"
+
+
+#===============================================================================
+# Initialize the script...
+#===============================================================================
+while getopts d:r:h option
+do
+    case $option in
+        d)
+            OPT_DISTNAME=$OPTARG
+        ;;
+        r)
+            OPT_RELEASE=$OPTARG
+        ;;
+        h)
+            echo "* Generate ISO image:
+\tsudo ./isoimage -d dist_name -r release
+example:
+\tsudo ./isoimage -d precise -r 20120215"
+            exit 0
+        ;;
+        ?)
+            echo "Type \"$0 -h\" for help"
+            exit 1
+        ;;
+    esac
+done
+
+
+#-------------------------------------------------------------------------------
+# include helper functions
+#-------------------------------------------------------------------------------
+#. "$TOOLS"
+################################################################################
+# Global Variables
+################################################################################
+TOOL_CURRENT_DIR=`pwd`
+OUT_LOG=$TOOL_CURRENT_DIR/output.log
+ERR_LOG=$TOOL_CURRENT_DIR/error.log
+
+
+if [ "$TOOL_SHOW_OUTPUT" != "1" ]; then
+	echo > $OUT_LOG
+	echo > $ERR_LOG
+	exec 1>$OUT_LOG 2>$ERR_LOG
+fi
+
+
+################################################################################
+# Functions
+################################################################################
+tool_echo ()
+{
+	if [ "$TOOL_SHOW_OUTPUT" = "1" ]; then
+		echo "$@"
+	else
+		# FIXME : a way to do it better ???
+		echo "$@"
+		echo "$@" 1>&2
+	fi
+}
+
+tool_start ()
+{
+	msg=$@
+	
+	tool_echo "################################################################################"
+	tool_echo "# $msg"
+	tool_echo "################################################################################"
+}
+
+tool_warning ()
+{
+	msg=$@
+	
+	tool_echo "********************************************************************************"
+	tool_echo "Warning $msg"
+	tool_echo "Continue..."
+	tool_echo "********************************************************************************"
+}
+
+tool_abort ()
+{
+	msg=$@
+	
+	tool_echo "********************************************************************************"
+	tool_echo "Fatal error $msg"
+	tool_echo "Abort..."
+	tool_echo "********************************************************************************"
+	
+	if [ "$TOOL_IGNORE_ERROR" != "1" ]; then
+		exit 1
+	fi
+}
+
+tool_execute ()
+{
+	cmd=$@
+	
+	tool_echo "--------------------------------------------------------------------------------"
+	tool_echo $cmd
+	tool_echo "--------------------------------------------------------------------------------"
+	
+	($cmd)
+	
+	if [ "$?" -ne "0" ]; then
+		tool_abort "in command: $cmd"
+	fi
+}
+
+
+#-------------------------------------------------------------------------------
+# build settings
+#-------------------------------------------------------------------------------
+NETBOOT_BASE_DIR="$CURRENT_DIR/$OPT_DISTNAME"
+NETBOOT_ISO="${OPT_DISTNAME}-${OPT_ARCH}-${OPT_RELEASE}.iso"
+TEMP_ISO_DIR="$NETBOOT_BASE_DIR/tmp_iso"
+ISO_OUTPUT_DIR="$NETBOOT_BASE_DIR"
+
+
+extract_iso ()
+{
+    # extract_iso $netboot_base_dir $netboot_iso $temp_iso_dir
+    
+    netboot_base_dir=$1
+    src_iso=$netboot_base_dir/alternate/$2
+    preseed_base_dir=$netboot_base_dir
+    tmp_base_dir=$3
+    tmp_iso_dir=$tmp_base_dir/iso
+    tmp_irmod=$tmp_base_dir/irmod
+    
+	tool_start "Extract \"$src_iso\" to \"$tmp_base_dir\""
+    
+    # mount iso image
+    umount /media/cdrom
+    tool_execute "mount -o loop -t iso9660 $src_iso /media/cdrom"
+    
+    # create temp directory
+    rm -rf "$tmp_base_dir"
+    tool_execute "mkdir -p $tmp_iso_dir"
+    
+    # copy image content
+    tool_execute "cp -pr /media/cdrom/. $tmp_iso_dir"
+    tool_execute "umount /media/cdrom"
+
+    cd $tmp_iso_dir
+    mv $tmp_iso_dir/md5sum.txt $tmp_iso_dir/../md5sum.txt.orig
+    
+    # http://www.thelinuxblog.com/recursive-md5-sum-script/
+    find ./ -type f -exec md5sum $1 {} \; > $tmp_iso_dir/../md5sum.txt.new
+    #find $@ ! -type d -print0 | xargs -0 md5sum > ../md5sum.txt
+    #find -type f -exec md5sum {} + > $tmp_iso_dir/../md5sum.txt
+    #find * ! -type d -print0 | xargs -0 md5sum > $tmp_iso_dir/../md5sum.txt
+    
+    cp $tmp_iso_dir/../md5sum.txt.new $tmp_iso_dir/md5sum.txt
+    tool_execute "cp $tmp_iso_dir/preseed/lubuntu.seed  $tmp_iso_dir/../lubuntu.seed.orig"
+    tool_execute "cp $netboot_base_dir/lubuntu.seed $tmp_iso_dir/preseed/lubuntu.seed"
+    
+    cd $CURRENT_DIR
+}
+
+build_iso ()
+{
+    input_dir=$1
+    iso_file=$2
+    
+	tool_start "Generate ISO image $iso_file from $input_dir directory"
+    
+    if [ -e "$iso_file" ];then
+        rm $iso_file
+    fi
+    
+    cd $input_dir
+    tool_execute "genisoimage -r -V ${OPT_DISTNAME}-${OPT_ARCH}-${OPT_RELEASE} -input-charset utf8 -cache-inodes -J -l -b isolinux/isolinux.bin -c isolinux/boot.cat -no-emul-boot -boot-load-size 4 -boot-info-table -o $iso_file $input_dir"
+    
+    cd $CURRENT_DIR
+}
+
+#===============================================================================
+# generate iso image...
+#===============================================================================
+if [ ! -e $NETBOOT_BASE_DIR/alternate/$NETBOOT_ISO ];then
+    echo "* Can't find \"$NETBOOT_BASE_DIR/alternate/$NETBOOT_ISO\"
+abort..."
+    exit 1
+fi
+
+extract_iso $NETBOOT_BASE_DIR $NETBOOT_ISO $TEMP_ISO_DIR
+build_iso $TEMP_ISO_DIR/iso $NETBOOT_BASE_DIR/release/$NETBOOT_ISO
+
+
+
+
