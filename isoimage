@@ -1,5 +1,5 @@
 #!/bin/sh
-################################################################################
+########################################################################################################################
 #
 # isoimage
 # 
@@ -9,16 +9,20 @@
 # it under the terms of the GNU General Public License Version 2.
 # http://www.gnu.org/licenses/gpl-2.0.txt
 # 
-# Purpose:  generate a mini.iso image from an existing one.
+# Purpose:  Generates A Custom Alternate Iso Image from an existing one.
 #           
-# Example : you have a renamed mini.iso image as
-#           precise/netinstall/precise-i386-20120215.iso
+# Example : Remaster Ubuntu Precise
+#           
+#           Create a precise/alternate directory and copy your original iso in that directory as :
+#           precise/alternate/precise-i386-20120215.iso
 #           then run :
 #           sudo ./isoimage -d precise -r 20120215
-#           the generated image will be :
+#
+#           The generated image will be :
 #           precise/realise/precise-i386-20120215.iso
-# 
-################################################################################
+#
+#
+########################################################################################################################
 #===============================================================================
 # Global parameters
 #===============================================================================
